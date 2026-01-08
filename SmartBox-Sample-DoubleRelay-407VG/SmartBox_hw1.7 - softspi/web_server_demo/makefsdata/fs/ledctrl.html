@@ -1,0 +1,118 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<SCRIPT language=Javascript type=text/javascript src="NetPara.js"></SCRIPT>
+<style type="text/css">
+  .ul1{margin:0;padding:0; list-style:none;}
+  .li1{margin:0;padding:0; list-style:none;}
+  .menu{width:1000px;height:48px;margin:0 auto; background-color: #0066CC; }
+  .menu ul li{width:200px;height:48px; line-height:48px; text-align:center; float:left;display:inline; border:1px solid white}
+  .menu ul li a{width:200px;height:48px; float:left;text-decoration:none; color:#fff; font-size:18px;font-weight:bold;}
+  .bodystyle{margin:0 auto; width:1000px; background:#d5d5d7;}
+</style></head>
+
+<body class="bodystyle" onload="initLedSta();">
+  <div style="background-color:#FFFFFF;">
+    <div class="menu">
+      <ul class="ul1">
+          <li class="li1"><a href="home.html">主页</a></li>
+          <li class="li1"><a href="handleip2.html">IP参数修改</a></li>
+          <li class="li1"><a href="ledctrl.html">灯控界面</a></li>
+        </ul>
+    </div>
+    
+    <div style="background-color:#0066CC;color:#fff;margin-top:10px; ">
+      <h3>
+        <span>开关灯</span>
+      </h3>
+    </div>
+    <div align="center">
+      <form method="post" action="/ledctrl.cgi">
+        <p>
+            <b>led1: pwm</b>
+            <input type="text" width="50" name="led1" id="led1" value="0"></input>
+            <br>
+            <b>led2: pwm</b>
+            <input type="text" width="50" name="led2" id="led2" value="0"></input>
+            <br>
+          <input type="submit" name="btn3" id="btn3" value="SEND" />
+        </p>
+		  </form>
+    
+      <table border="0" cellpadding="1">
+        <tbody><tr>
+          
+          <td width="375" id="ele1"></td>
+        </tr></tbody>
+
+        <tbody><tr>
+          <td width="375" id="ele2"></td>
+        </tr> </tbody>
+      </table>
+    </div>
+
+    <div style="background-color:#0066CC;color:#fff;margin-top:10px; ">
+      <h3>
+        <span>时间控制策略</span>
+      </h3>
+    </div>
+    <div align="center">
+            <form method="post" action="/timectrlset.cgi">
+        	<h2>主灯</h2>
+            <b>开始时间: </b>
+            <input type="text" name="start_time" id="start_time1"></input>
+            <br>
+            <b>阶段一 时长(m)</b>
+            <input type="text" name="led_tim1" id="led1_tim1"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm1" id="led1_pwm1"></input>
+            <br>
+            <b>阶段二 时长(m)</b>
+            <input type="text" name="led_tim2" id="led1_tim2"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm2" id="led1_pwm2"></input>
+            <br>
+            <b>阶段三 时长(m)</b>
+            <input type="text" name="led_tim3" id="led1_tim3"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm3" id="led1_pwm3"></input>
+            <br>
+            <b>阶段四 时长(m)</b>
+            <input type="text" name="led_tim4" id="led1_tim4"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm4" id="led1_pwm4"></input>
+            <br>
+            <input type="submit" name="btn1" id="btn1" value="SEND"> 
+         	<br>
+            </form>
+            <hr />
+            <form method="post" action="/timectrlset.cgi">
+            <h2>辅灯</h2>
+            <b>开始时间: </b>
+            <input type="text" name="start_time" id="start_time2"></input>
+            <br>
+            <b>阶段一 时长(m)</b>
+            <input type="text" name="led_tim1" id="led2_tim1"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm1" id="led2_pwm1"></input>
+            <br>
+            <b>阶段二 时长(m)</b>
+            <input type="text" name="led_tim2" id="led2_tim2"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm2" id="led2_pwm2"></input>
+            <br>
+            <b>阶段三 时长(m)</b>
+            <input type="text" name="led_tim3" id="led2_tim3"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm3" id="led2_pwm3"></input>
+            <br>
+            <b>阶段四 时长(m)</b>
+            <input type="text" name="led_tim4" id="led2_tim4"></input>
+            <b>亮度(%)</b>
+            <input type="text" name="led_pwm4" id="led2_pwm4"></input>
+            <br>
+            <input type="submit" name="btn2" id="btn2" value="SEND"> 
+          	<br>
+            </form>
+    </div>
+  </div>
+</body></html>

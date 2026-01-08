@@ -1,0 +1,178 @@
+#include "MyFlash.h"
+
+static uint32_t GetSector(uint32_t Address);
+
+
+uint16_t MEM_If_Init_FS(void)
+{
+ 
+    HAL_FLASH_Unlock();
+    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR | 
+                          FLASH_FLAG_PGAERR | FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR);
+ 
+}
+
+uint16_t MEM_If_DeInit_FS(void)
+{
+    HAL_FLASH_Lock();
+}
+ 
+
+uint16_t MEM_If_Erase_FS(uint32_t start_Add,uint32_t end_Add)
+{
+    /* USER CODE BEGIN 3 */
+    uint32_t UserStartSector;
+    uint32_t SectorError;
+    FLASH_EraseInitTypeDef pEraseInit;
+ 
+    /* Unlock the Flash to enable the flash control register access *************/
+    MEM_If_Init_FS();
+ 
+    /* Get the sector where start the user flash area */
+    UserStartSector = GetSector(start_Add);
+ 
+    pEraseInit.TypeErase = TYPEERASE_SECTORS;
+    pEraseInit.Sector = UserStartSector;
+    pEraseInit.NbSectors = GetSector(end_Add)-UserStartSector+1 ;
+    pEraseInit.VoltageRange = VOLTAGE_RANGE_3;
+ 
+    if (HAL_FLASHEx_Erase(&pEraseInit, &SectorError) != HAL_OK)
+    {
+        /* Error occurred while page erase */
+        return (1);
+    }
+ 
+    return HAL_OK;
+    /* USER CODE END 3 */
+}
+
+uint8_t MEM_If_Write_FS(uint32_t address, uint8_t *data, uint32_t Len)
+{
+    /* USER CODE BEGIN 3 */
+    uint32_t i = 0;
+	uint32_t datatemp;
+	uint8_t flashStatus = 0;
+	uint32_t Address;
+	uint32_t EndAddress;
+	
+	Address = address;
+	EndAddress = Address+Len;
+    for(i = 0; i < Len; i+=4)
+    {
+		if((EndAddress - Address) == 1)
+		{
+			datatemp = data[Address - address] | 0xffffff00;
+		}
+		else if((EndAddress - Address) == 2)
+		{
+			datatemp = (data[Address - address+1]<<8) | data[Address - address] | 0xffff0000;
+		}
+		else if((EndAddress - Address) == 3)
+		{
+			datatemp = (data[Address - address+2]<<16) | (data[Address - address+1]<<8) | data[Address - address] | 0xff000000;
+		}
+		else if((EndAddress - Address) == 4)
+		{
+			datatemp = (data[Address - address+3]<<24) | (data[Address - address+2]<<16) | (data[Address - address+1]<<8) | data[Address - address] | 0xff000000;
+		}
+        /* Device voltage range supposed to be [2.7V to 3.6V], the operation will
+           be done by byte */
+        if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, (uint32_t)(address+i), datatemp) == HAL_OK)
+        {
+            /* Check the written value */
+            if(datatemp != *(uint32_t*)(address+i))
+            {
+                /* Flash content doesn't match SRAM content */
+				flashStatus = 2;
+                return flashStatus;
+            }
+			Address += 4;
+        }
+        else
+        {
+            /* Error occurred while writing data in Flash memory */
+			flashStatus = 1;
+            return flashStatus;
+        }
+    }
+    return (flashStatus);
+    /* USER CODE END 3 */
+}
+uint8_t *MEM_If_Read_FS (uint32_t address, uint8_t *data, uint32_t Len)
+{
+    /* Return a valid address to avoid HardFault */
+    /* USER CODE BEGIN 4 */
+	uint32_t i = 0;
+//    uint8_t *psrc = address;
+ 
+    for(i = 0; i < Len; i++)
+    {
+        data[i] = *(uint8_t * )address++;
+    }
+    return 0;
+
+    /* USER CODE END 4 */
+}
+
+
+
+/**
+  * @brief  Gets the sector of a given address
+  * @param  Address: Flash address
+  * @retval The sector of a given address
+  */
+static uint32_t GetSector(uint32_t Address)
+{
+  uint32_t sector = 0;
+  
+  if((Address < ADDR_FLASH_SECTOR_1) && (Address >= ADDR_FLASH_SECTOR_0))
+  {
+    sector = FLASH_SECTOR_0;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_2) && (Address >= ADDR_FLASH_SECTOR_1))
+  {
+    sector = FLASH_SECTOR_1;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_3) && (Address >= ADDR_FLASH_SECTOR_2))
+  {
+    sector = FLASH_SECTOR_2;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_4) && (Address >= ADDR_FLASH_SECTOR_3))
+  {
+    sector = FLASH_SECTOR_3;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_5) && (Address >= ADDR_FLASH_SECTOR_4))
+  {
+    sector = FLASH_SECTOR_4;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_6) && (Address >= ADDR_FLASH_SECTOR_5))
+  {
+    sector = FLASH_SECTOR_5;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_7) && (Address >= ADDR_FLASH_SECTOR_6))
+  {
+    sector = FLASH_SECTOR_6;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_8) && (Address >= ADDR_FLASH_SECTOR_7))
+  {
+    sector = FLASH_SECTOR_7;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_9) && (Address >= ADDR_FLASH_SECTOR_8))
+  {
+    sector = FLASH_SECTOR_8;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_10) && (Address >= ADDR_FLASH_SECTOR_9))
+  {
+    sector = FLASH_SECTOR_9;  
+  }
+  else if((Address < ADDR_FLASH_SECTOR_11) && (Address >= ADDR_FLASH_SECTOR_10))
+  {
+    sector = FLASH_SECTOR_10;  
+  }
+  else
+  {
+    sector = FLASH_SECTOR_11;  
+  }
+ 
+  return sector;
+}

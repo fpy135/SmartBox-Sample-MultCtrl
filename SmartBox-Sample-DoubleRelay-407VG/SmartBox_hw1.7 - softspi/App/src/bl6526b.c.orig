@@ -1,0 +1,363 @@
+#include "bl6526b.h"
+#include "SysConfig.h"
+#include "math.h"
+#include "main.h"
+#include "usart.h"
+	#include "spi.h"
+
+BL6526BStruct bl6526bdata;
+CollectionData IRMT_S1 = {0};		/*将IRMT_S1结构体的值都初始化为0*/
+
+extern uint16_t FLASH_HF33F_Relay;					/*FLASH中存放的掉电前的继电器状态*/
+
+
+
+//extern uint8_t BL6526B_Data_Write[];
+
+
+/*******************************************************************************
+** 函数名称: SPI1_Configuration
+** 功能描述：
+** 函数说明：SPI1初始化
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/
+void SPI1_Configuration(void)
+{
+	HAL_GPIO_WritePin(GPIOE, SPI4_CS_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOC, SPI4_RST_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOD, SPI2_CS_Pin|SPI2_RST_Pin, GPIO_PIN_SET);
+
+}
+
+/*******************************************************************************
+** 函数名称: BL6526B_Init
+** 功能描述：
+** 函数说明：BL6526B_Init初始化
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/
+void BL6526B_Init(void)
+{
+		SPI1_Configuration();
+		BL6526B_RST_LOW();
+		HAL_Delay(10);
+		BL6526B_RST_HIGH();
+		HAL_Delay(10);
+}
+/*******************************************************************************
+** 函数名称: BL6526B_ReadData
+** 功能描述：往里面传一个CMD = 0X00 + Address
+** 函数说明：BL6526B_ReadData从BL6526B里面读数据出来 24bit数据
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/	
+
+uint32_t BL6526B_ReadData(uint8_t Cmd)
+{
+	uint8_t byte[3];
+	uint8_t i,j;
+	uint32_t data = 0;
+
+	BL6526B_CS_LOW();
+	HAL_Delay(1);
+	//先往地址里面写一个字节 告诉BL6526B的哪个寄存器 
+	HAL_SPI_Transmit(&hspi2,&Cmd,1,0XFF);//发送数据
+//	SPI1_SendByte(Cmd);
+	//开始接收3个字节数据
+	HAL_Delay(1);
+	HAL_SPI_Receive(&hspi2,byte,3,0XFFFF);//接收数据
+	HAL_Delay(1);
+	BL6526B_CS_HIGH();
+	HAL_Delay(1);
+	data = (data|byte[0])<<8;
+	data = (data|byte[1])<<8;
+	data = (data|byte[2]);
+	return data ;
+	
+}
+
+/*******************************************************************************
+** 函数名称: BL6526B_WriteData
+** 功能描述：往里面传一个CMD = 0X00 + Address
+** 函数说明：BL6526B_WriteData
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/	
+void BL6526B_WriteData(uint8_t Cmd,uint8_t byte1,uint8_t byte2,uint8_t byte3)
+{	
+	BL6526B_CS_LOW();
+	HAL_Delay(1);
+	//先往地址里面写一个字节 告诉BL6526B的哪个寄存器 
+	SPI1_SendByte(Cmd);
+	SPI1_SendByte(byte1);
+	SPI1_SendByte(byte2);
+	SPI1_SendByte(byte3);
+
+	HAL_Delay(1);
+	BL6526B_CS_HIGH();
+}
+/*******************************************************************************
+** 函数名称: SPI3_SendByte
+** 功能描述：
+** 函数说明：发送一个字节到BL6526B
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/		
+void SPI1_SendByte(uint8_t byte)
+{
+	HAL_SPI_Transmit(&hspi2,&byte,1,0XFF);//发送数据
+}
+	
+/*******************************************************************************
+** 函数名称: SPI3_ReceiveByte
+** 功能描述：
+** 函数说明：接收到一个字节
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/		
+uint8_t SPI1_ReceiveByte(void)
+{
+	uint8_t i,byte = 0;
+	HAL_SPI_Receive(&hspi2,&byte,3,0XFFFF);//接收数据
+	return byte;
+}	
+
+void BL6526B_ProcessTask()
+{
+		float v,i,p,e;
+		float sum = 0.0;
+		uint8_t x = 0;
+		v=i=p=e=0.0;
+	
+		BL6526B_WriteData((BL6526B_WRPROT | 0x40),0x00,0x00,0x55);
+		BL6526B_WriteData((BL6526B_MODE | 0x40),0x00,0x00,0x80);
+		BL6526B_WriteData((BL6526B_GAIN | 0x40),0x00,0x00,0x03);
+		BL6526B_WriteData((BL6526B_MASK | 0x40),0x00,0x00,0x28);
+		BL6526B_WriteData((BL6526B_V_PKLVL | 0x40),0x00,0x03,0xEA);				//240V左右会过压
+		BL6526B_WriteData((BL6526B_I_PKLVL | 0x40),0x00,0x03,0xE8);				//5A电流左右会过流
+
+		printf("--------------------------------------\r\n");								/*分割*/
+		bl6526bdata.status = (BL6526B_ReadData(BL6526B_STATUS));						/* 中断状态寄存器*/
+		printf("BL6526B_STATUS = 0X%X\r\n", bl6526bdata.status);
+	
+		bl6526bdata.wrprot = (BL6526B_ReadData(BL6526B_WRPROT));    				/* 写保护设置寄存器*/
+		printf("BL6526B_WRPROT = 0x%X\r\n", bl6526bdata.wrprot);
+	
+		bl6526bdata.mode = (BL6526B_ReadData(BL6526B_MODE));								/* 工作模式寄存器*/
+		printf("BL6526B_MODE = 0x%X\r\n", bl6526bdata.mode);
+	
+		bl6526bdata.gain = (BL6526B_ReadData(BL6526B_GAIN));								/* 增益寄存器*/
+		printf("BL6526B_GAIN = 0x%X\r\n", bl6526bdata.gain);
+	
+		bl6526bdata.mask = (BL6526B_ReadData(BL6526B_MASK));								/* 中断屏蔽寄存器*/
+		printf("BL6526B_MASK = 0x%X\r\n", bl6526bdata.mask);
+		
+		bl6526bdata.v_pklvl = (BL6526B_ReadData(BL6526B_V_PKLVL));					/* 电压峰值门限寄存器*/
+		printf("BL6526B_V_PKLVL = 0x%X\r\n", bl6526bdata.v_pklvl);
+
+		bl6526bdata.i_pklvl = (BL6526B_ReadData(BL6526B_I_PKLVL));					/* 电流峰值门限寄存器*/
+		printf("BL6526B_I_PKLVL = 0x%X\r\n", bl6526bdata.i_pklvl);
+
+		bl6526bdata.v_rms = (BL6526B_ReadData(BL6526B_V_RMS));							/* 电压有效值寄存器*/
+		printf("BL6526B_V_RMS = %d\r\n", bl6526bdata.v_rms);
+		
+		bl6526bdata.i_rms = (BL6526B_ReadData(BL6526B_I_RMS));							/* 电流有效值寄存器*/
+		printf("BL6526B_I_RMS = %d\r\n", bl6526bdata.i_rms);
+		
+		bl6526bdata.v_wave = (BL6526B_ReadData(BL6526B_V_WAVE));						/* 电压波形寄存器*/
+		printf("BL6526B_V_WAVE = %d\r\n", bl6526bdata.v_wave);
+		
+		bl6526bdata.i_wave = (BL6526B_ReadData(BL6526B_I_WAVE));						/* 电流波形寄存器*/
+		printf("BL6526B_I_WAVE = %d\r\n", bl6526bdata.i_wave);
+		
+		bl6526bdata.v_peak = (BL6526B_ReadData(BL6526B_V_PEAK));						/* 电压瞬态峰值寄存器*/
+		printf("BL6526B_V_PEAK = %d\r\n", bl6526bdata.v_peak);
+		
+		bl6526bdata.i_peak = (BL6526B_ReadData(BL6526B_I_PEAK));						/* 电流瞬态峰值寄存器*/
+		printf("BL6526B_I_PEAK = %d\r\n", bl6526bdata.i_peak);
+		
+		bl6526bdata.watt = (BL6526B_ReadData(BL6526B_WATT));								/* 平均有功功率寄存器*/
+		printf("BL6526B_WATT = %d\r\n", bl6526bdata.watt);
+		
+		bl6526bdata.va = (BL6526B_ReadData(BL6526B_VA));										/* 平均视在功率寄存器*/
+		printf("BL6526B_VA = %d\r\n", bl6526bdata.va);
+		
+		bl6526bdata.pf = (BL6526B_ReadData(BL6526B_PF));										/* 功率因子寄存器*/
+		for(x = 1; x <= 23; x++)
+		{
+			 sum += ((float)pow(2,x-24)) * (bl6526bdata.pf>>(x-1) & (0x01));
+		}
+		printf("BL6526B_PF = %f\r\n", sum);
+		
+		bl6526bdata.vahr = (BL6526B_ReadData(BL6526B_VAHR));								/* 视在能量寄存器*/
+		printf("BL6526B_VAHR = %d\r\n", bl6526bdata.vahr);
+		
+		v = bl6526bdata.v_rms / 11651.8;
+		i = bl6526bdata.i_rms / 555914.9;
+		p = v * i;
+		e = bl6526bdata.vahr / 20253000.0;
+		
+		if (((uint16_t)(i * 1000)) < 10)									//电流小于0.01A 则将其设置为0
+			IRMT_S1.Current = 0;
+		else
+			IRMT_S1.Current = (uint16_t)(i * 1000);
+		
+		if (((uint16_t)(v * 100)) < 100)									//电压小于1V 则将其设置为0
+			IRMT_S1.Voltage = 0;
+		else
+			IRMT_S1.Voltage = (uint16_t)(v * 100);
+		
+		if (((uint32_t)(p * 100)) < 100)									//功率小于1W 则将其设置为0
+			IRMT_S1.Power = 0;
+		else
+			IRMT_S1.Power = (uint32_t)(p * 100);
+		
+		IRMT_S1.Energy = (uint32_t)(e * 1000);
+		
+		printf("--------------------------------------\r\n");							/*分割*/
+		printf("V = %d,A = %d,P = %d,E = %d \n",IRMT_S1.Voltage,IRMT_S1.Current,IRMT_S1.Power,IRMT_S1.Energy);
+//		printf("V = %.1fV,A = %.2fA,P = %.2fW,E = %f° \n",v,i,p,e);
+		printf("--------------------------------------\r\n");							/*分割*/
+
+}
+
+/*******************************************************************************
+** 函数名称: NVIC_Configuration
+** 功能描述：
+** 函数说明：配置嵌套向量中断控制器NVIC
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/		
+void NVIC_Configuration(void)
+{
+//  NVIC_InitTypeDef NVIC_InitStructure;
+//  
+//  /* 配置NVIC为优先级组1 */
+//  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+//  
+//  /* 配置中断源：按键1 */
+//  NVIC_InitStructure.NVIC_IRQChannel = EXTI15_10_IRQn;
+//  /* 配置抢占优先级 */
+//  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+//  /* 配置子优先级 */
+//  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+//  /* 使能中断通道 */
+//  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+//  NVIC_Init(&NVIC_InitStructure);
+  
+}
+/*******************************************************************************
+** 函数名称: BL6526B_EXTI_Config
+** 功能描述：
+** 函数说明：配置 IO为EXTI中断口，并设置中断优先级
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/		
+void BL6526B_EXTI_Config(void)
+{
+//	GPIO_InitTypeDef GPIO_InitStructure; 
+//	EXTI_InitTypeDef EXTI_InitStructure;
+
+//	/*开启按键GPIO口的时钟*/
+//	RCC_APB2PeriphClockCmd((RCC_APB2Periph_GPIOB|RCC_APB2Periph_AFIO),ENABLE);			//因为要用到AFIO_EXTICRx这个寄存器
+//	
+//	/* 配置 NVIC 中断*/
+//	NVIC_Configuration();
+//	
+///*--------------------------BL6526B的配置-----------------------------*/
+//	/* 选择按键用到的GPIO */	
+//  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+//  /* 配置为浮空输入 */	
+//  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+//  GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+//	/* 选择EXTI的信号源 */
+//  GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource10);			//将GPIOB连接到EXIT_line10,通过配置AFIO_EXTICRx这个寄存器
+//  EXTI_InitStructure.EXTI_Line = EXTI_Line10;
+//	
+//	/* EXTI为中断模式 */
+//  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+//	/* 下降沿中断 */
+//  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
+//  /* 使能中断 */	
+//  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+//  EXTI_Init(&EXTI_InitStructure);
+}	
+
+/*******************************************************************************
+** 函数名称: EXTI15_10_IRQHandler
+** 功能描述：
+** 函数说明：BL6526B中断处理函数
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/	
+void EXTI15_10_IRQHandler(void)
+{
+//	uint32_t temp;
+//	temp = (BL6526B_ReadData(BL6526B_STATUS));
+  //确保是否产生了EXTI Line中断
+//	if(EXTI_GetITStatus(EXTI_Line10) != RESET) 
+//	{	
+//		if (bl6526bdata.status & 0x20)
+//		{
+//				printf("\n******************BL6526B电压过载********************\n");	
+////				BL6526B_WriteData((BL6526B_STATUS | 0x40),0x00,0x00,0x00);
+////				IRMT_S1.Bl6526bState = 0X02;
+////				temp = (BL6526B_ReadData(BL6526B_STATUS));
+////				printf("BL6526B_STATUS = 0x%X\n",temp);
+
+//		}
+//		if (bl6526bdata.status & 0x08)
+//		{
+//				printf("\n******************BL6526B电流过载********************\n");	
+//		}
+//		
+////    清除中断标志位
+//		EXTI_ClearITPendingBit(EXTI_Line10);     
+//	}  
+}
+
+/*******************************************************************************
+** 函数名称: Bl6526bState_Process
+** 功能描述：
+** 函数说明：设置电量采集芯片状态(正常,过流,过压,过零)函数
+** 作　  者:   
+** 日　  期: 
+*******************************************************************************/	
+void Bl6526bState_Process(void)
+{
+	if (bl6526bdata.status & 0x20)
+		{
+			IRMT_S1.Bl6526bState = 0X02;
+		}
+	else if (bl6526bdata.status & 0x08)
+		{
+			IRMT_S1.Bl6526bState = 0X03;
+		}
+	else 
+		{
+			IRMT_S1.Bl6526bState = 0X00;
+		}
+	
+	switch(IRMT_S1.Bl6526bState)
+	{
+		case 0x00:		//正常
+		LED_GREEN;
+		break;
+		
+		case 0x02:		//过压
+		LED_RED;
+		break;
+		
+		case 0x03:		//过流
+		LED_BLUE;
+		IRMT_S1.RelayState = 0;
+		break;
+		
+		case 0x04:		//同时过压过流
+		LED_YELLOW;
+		break;
+	}	
+	
+}

@@ -1,0 +1,51 @@
+#include "Environment_data.h"
+#include "usart.h"
+#include "FreeRTOS.h"
+#include "cmsis_os.h"
+#include <stdio.h>
+uint8_t Tx485Buffer1[8] = {0x01,0x03,0x00,0x00,0x00,0x01,0x84,0x0A};
+uint8_t Tx485Buffer2[8] = {0x02,0x03,0x00,0x00,0x00,0x01,0x84,0x39};
+uint8_t Tx485Buffer3[8] = {0x03,0x03,0x00,0x00,0x00,0x04,0x45,0xEB};
+
+BaseType_t Environment_Data_TaskID;
+xTaskHandle pvCreatedTask_Environment_Data;
+
+void Get_Environment_Data(void)
+{
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_SET);
+	HAL_UART_Transmit(&huart1,Tx485Buffer1,8,10000);		
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_RESET);
+	vTaskDelay(100);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_SET);
+	HAL_UART_Transmit(&huart1,Tx485Buffer2,8,10000);			
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_RESET);
+	vTaskDelay(100);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_SET);
+	HAL_UART_Transmit(&huart1,Tx485Buffer3,8,10000);			
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_RESET);
+}
+
+void Environment_Data_Task(void *arg)
+{
+	static uint8_t sample_cnt = 0;
+	while(1)
+	{
+		sample_cnt++;
+		if(sample_cnt == 2)
+		{
+			sample_cnt = 0;
+			Get_Environment_Data();
+		}
+		vTaskDelay(1000);
+	}
+}
+
+void CreatEnvironment_DataTask(void)
+{	
+	Environment_Data_TaskID = xTaskCreate(Environment_Data_Task, "Environment_Data", Environment_Data_StkSIZE, NULL, Environment_Data_TaskPrio, &pvCreatedTask_Environment_Data);
+	if(pdPASS != Environment_Data_TaskID)
+	{
+		printf("\r\nEnvironment_Data_Task creat error");
+		while(1);
+	}
+}

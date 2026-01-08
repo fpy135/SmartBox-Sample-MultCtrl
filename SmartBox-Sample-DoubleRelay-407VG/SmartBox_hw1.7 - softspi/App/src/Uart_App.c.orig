@@ -1,0 +1,192 @@
+#include "Uart_App.h"
+#include "cmsis_os.h"
+#include "task.h"
+#include "main.h"
+#include "usart.h"
+#include "stdio.h"
+#include "string.h"
+#include "Protocol.h"
+#include "socketserver.h"
+extern QueueHandle_t TCP_SEND_Queue;
+
+BaseType_t Uart_TaskID;
+xTaskHandle pvCreatedTask_Uart;
+
+/*
+	在定时器中断中调用
+*/
+void UartTimeOutCnt(void)
+{
+	if(Uart1_TimeOut < 0xF0)
+	{
+		if(++Uart1_TimeOut >= UART_TimeOUT_MAX)
+		{
+			Uart1_TimeOut = 0xFE;
+		}
+	}
+	if(Uart5_TimeOut < 0xF0)
+	{
+		if(++Uart5_TimeOut >= UART_TimeOUT_MAX)
+		{
+			Uart5_TimeOut = 0xFE;
+		}
+	}
+}
+
+void Uart1DataPro(uint8_t *buf, uint16_t len)
+{
+	static uint16_t wind_speed = 0;
+	static uint16_t wind_direction = 0;
+	static uint16_t pm2_5 = 0;
+	static uint16_t pm10 = 0;
+	static uint16_t temperature = 0;
+	static uint16_t humidity = 0;
+	if(buf[0] == 1)
+	{
+		if(len>=7)
+		{
+			uint16_t crc_tmp1,crc_tmp2;
+			
+			crc_tmp2 = CRC16_Calc(buf,5);
+			crc_tmp1 = buf[6]<<8 | buf[5];
+			if(crc_tmp1 == crc_tmp2)
+			{
+				wind_speed = ((buf[3] << 8) | buf[4]) ;
+//				printf("目前风速：%.1f m/s \n",wind_speed/ 10.0);
+				memset(buf,0x00,7); //清空数组
+			}
+			len = 0;
+		}
+	}
+	
+	else if(buf[0] == 2)
+	{
+		if(len>=7)
+		{
+			uint16_t crc_tmp1,crc_tmp2;
+			crc_tmp2 = CRC16_Calc(buf,5);
+			crc_tmp1 = buf[6]<<8 | buf[5];
+			if(crc_tmp1 == crc_tmp2)
+			{
+				wind_direction = ((buf[3] << 8) | buf[4]) ;
+//				printf("目前风向：%.1f° \n",wind_direction/ 100.0);
+				memset(buf,0x00,7); //清空数组
+			}
+			len = 0;
+		}
+	}
+	
+	else if(buf[0] == 3)
+	{
+		if(len>=13)
+		{
+			static	uint8_t TCP_PAYLOAD[15];
+			uint16_t crc_tmp1,crc_tmp2;
+			crc_tmp2 = CRC16_Calc(buf,11);
+			crc_tmp1 = buf[12]<<8 | buf[11];
+			if(crc_tmp1 == crc_tmp2)
+			{
+				pm2_5 = ((buf[3] << 8) | (buf[4])) ;
+				pm10 = ((buf[5] << 8) | (buf[6])) ;
+				temperature = ((buf[7] << 8) | (buf[8])) ;
+				humidity = ((buf[9] << 8) | (buf[10])) ;
+//				printf("目前PM2.5：%.1f ug/m3 \n",pm2_5/ 10.0);
+//				printf("目前PM10：%.1f ug/m3 \n",pm10/ 10.0);
+//				printf("目前温度：%.1f℃ \n",temperature/ 100.0);
+//				printf("目前湿度：%.1f%% \n",humidity/ 100.0);
+				{
+					TCP_PAYLOAD[0] = 14;
+					TCP_PAYLOAD[1] = wind_speed>>8;
+					TCP_PAYLOAD[2] = wind_speed;
+					TCP_PAYLOAD[3] = wind_direction>>8;
+					TCP_PAYLOAD[4] = wind_direction;
+					TCP_PAYLOAD[5] = pm2_5>>8;
+					TCP_PAYLOAD[6] = pm2_5;
+					TCP_PAYLOAD[7] = pm10>>8;
+					TCP_PAYLOAD[8] = pm10;
+					TCP_PAYLOAD[9] = temperature>>8;
+					TCP_PAYLOAD[10] = temperature;
+					TCP_PAYLOAD[11] = humidity>>8;
+					TCP_PAYLOAD[12] = humidity;
+					TCP_PAYLOAD[13] = 0xff;
+					TCP_PAYLOAD[14] = 0xff;
+					xQueueSendToBackFromISR(TCP_SEND_Queue,TCP_PAYLOAD,0);
+				}
+				memset(buf,0x00,13); //清空数组
+			}
+			len = 0;
+		}
+	}
+	else
+		len = 0;
+}
+
+void Uart5DataPro(uint8_t *buf, uint16_t len)
+{
+	if(buf[0] == 0xAA)
+	{
+		uint16_t crc_tmp1,crc_tmp2;
+			
+		crc_tmp2 = CRC16_Calc(buf,len-2);
+		crc_tmp1 = buf[len-1]<<8 | buf[len-2];
+		if(crc_tmp1 == crc_tmp2)
+		{
+			if(buf[6] == ReadID_Cmd)		//查询ID
+			{
+				uint8_t *pbuf;
+	
+				pbuf = Protocol_Pack(0,Device_ID,ReadID_Cmd,0,(uint8_t *)buf);
+				PrintWrite(pbuf, len);		//返回的长度和写入长度一致
+				
+			}
+			else if(buf[6] == WriteID_Cmd)		//查询ID
+			{
+				uint8_t *pbuf;
+				
+				Device_ID = (buf[2]<<24 | buf[3]<<16 | buf[4]<<8 | buf[5]);
+				pbuf = Protocol_Pack(0,Device_ID,WriteID_Cmd,0,(uint8_t *)buf);
+				PrintWrite(pbuf, len);		//返回的长度和写入长度一致
+				
+			}
+		}
+	}
+}
+
+void Uart_Task(void * argument)
+{
+	while(1)
+	{
+		if(Uart1_TimeOut == 0xFE)
+		{
+			if(Uart1_Rx_Cnt)     //有数据
+			{
+//				UART4_LEN = Uart1_Rx_Cnt;
+				Uart1DataPro(Uart1RxBuffer, Uart1_Rx_Cnt);
+				Uart1_Rx_Cnt = 0;
+			}
+			Uart1_TimeOut = 0xF0;
+		}
+		if(Uart5_TimeOut == 0xFE)
+		{
+			if(Uart5_Rx_Cnt)     //有数据
+			{
+//				UART4_LEN = Uart5_Rx_Cnt;
+				Uart5DataPro(Uart5RxBuffer, Uart5_Rx_Cnt);
+				Uart5_Rx_Cnt = 0;
+			}
+			Uart5_TimeOut = 0xF0;
+		}
+		vTaskDelay(20);
+	}
+}
+
+void CreatUartTask(void)
+{
+	Uart_TaskID = xTaskCreate(Uart_Task, "Uart", Uart_StkSIZE, NULL, Uart_TaskPrio, &pvCreatedTask_Uart);
+	if(pdPASS != Uart_TaskID)
+	{
+		printf("\r\nTcp_Task creat error");
+		while(1);
+	}
+}
+

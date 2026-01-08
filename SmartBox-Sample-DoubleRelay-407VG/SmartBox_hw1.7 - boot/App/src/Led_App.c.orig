@@ -1,0 +1,48 @@
+#include "Led_App.h"
+
+uint8_t LedPwm = 0;
+uint8_t targetBrightness = 0;
+uint8_t LedStatus = 0;
+/******************************
+功能：产生 pwm 波
+用法：定时器中断内调用
+******************************/
+void Led_Pwm_Control(void)
+{
+	static uint8_t led_cnt = 1;
+	if(led_cnt>LedPwm)
+	{
+		Led0_Write(1);
+		Led1_Write(0);
+	}
+	else
+	{
+		Led0_Write(0);
+		Led1_Write(1);
+	}
+	led_cnt++;
+	if(led_cnt>=100)
+	{
+		led_cnt = 1;
+	}
+}
+
+/******************************
+功能：调整LED亮度
+用法：使亮度调节变得丝滑,在定时器中断中调用
+******************************/
+void Switch_Brightness(void)
+{
+	if(targetBrightness > LedPwm)
+	{
+		LedPwm++;
+	}
+	else if (targetBrightness < LedPwm)
+	{
+		LedPwm--;
+	}
+	else
+	{
+		LedPwm = targetBrightness;
+	}
+}
